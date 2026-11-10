@@ -1,0 +1,44 @@
+name: Update prices and publish app
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # 30分ごと（GitHubの混雑で数分〜十数分遅れることがあります）
+  workflow_dispatch:          # 手動実行ボタン
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install libraries
+        run: pip install yfinance pandas
+      - name: Fetch prices
+        run: python fetch_prices.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
