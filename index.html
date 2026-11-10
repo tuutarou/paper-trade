@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>仮想トレード練習場</title>
+<meta name="theme-color" content="#16202b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: スマホは下のタブで画面を切り替えるアプリ型。PCは中央の1列。銘柄を押すと下から注文シートが開く */
+:root {
+  --bg: #eef1f4; --card: #ffffff; --ink: #16202b; --ink-2: #5a6878; --line: #dce2e8;
+  --brand: #16202b; --brand-ink: #ffffff; --accent: #2d6fd2;
+  --up: #2d6fd2; --down: #d9711f; --ok: #1f8a5b; --warn: #b7791f; --bad: #c0392b;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f141a; --card: #18202a; --ink: #e7edf3; --ink-2: #98a6b5; --line: #2a3441;
+    --brand: #0a0e13; --brand-ink: #e7edf3; --accent: #74a8f0; --up: #74a8f0; --down: #f0a060;
+    --ok: #57c08d; --warn: #e3b062; --bad: #ff7a6b; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+button, input, select, textarea { font: inherit; color: inherit; }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--ink-2); }
+header.top { background: var(--brand); color: var(--brand-ink);
+  padding: calc(14px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
+.top-in { max-width: 960px; margin: 0 auto; display: grid; gap: 4px; }
+.top .label { font-size: 12px; opacity: .75; letter-spacing: .06em; }
+.top .equity { font-family: var(--f-num); font-size: clamp(28px, 7vw, 36px); font-weight: 600; line-height: 1.15; }
+.top .pnl { font-family: var(--f-num); font-size: 14px; }
+.top .pnl.up { color: #9cc3ff; } .top .pnl.down { color: #ffbe85; }
+.top .fresh { font-size: 12px; opacity: .75; }
+main { max-width: 960px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 16px; }
+section.view { display: grid; gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.card h2 { font-size: 16px; margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card h2 small { font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.kpi { display: grid; gap: 2px; }
+.kpi .k { font-size: 12px; color: var(--ink-2); }
+.kpi .v { font-family: var(--f-num); font-size: 17px; font-weight: 600; }
+.list { display: grid; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--line); align-items: center; }
+.row:first-child { border-top: 0; }
+.row .name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.row .sub { font-size: 12.5px; color: var(--ink-2); grid-column: 1 / -1; }
+.row .right { text-align: right; }
+.row.tap { cursor: pointer; }
+.row.tap:hover .name { color: var(--accent); }
+.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-2); vertical-align: 1px; white-space: nowrap; }
+.badge.open { border-color: var(--ok); color: var(--ok); }
+.badge.win { border-color: var(--ok); color: var(--ok); } .badge.lose { border-color: var(--bad); color: var(--bad); }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chip { flex: none; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); cursor: pointer; font-size: 13.5px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.btn { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.btn.sell { background: var(--down); border-color: var(--down); color: #fff; font-weight: 700; }
+.btn.small { padding: 3px 10px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); z-index: 5; }
+nav.tabs button { border: 0; background: none; padding: 6px 0; font-size: 12.5px; color: var(--ink-2); cursor: pointer; display: grid; justify-items: center; gap: 2px; }
+nav.tabs button svg { width: 22px; height: 22px; }
+nav.tabs button[aria-current="page"] { color: var(--accent); font-weight: 700; }
+dialog.sheet { border: 0; padding: 0; width: min(640px, 100%); max-height: 92vh; margin: auto auto 0; border-radius: 16px 16px 0 0; background: var(--card); color: var(--ink); }
+dialog.sheet::backdrop { background: rgba(10, 14, 20, .45); }
+@media (min-width: 700px) { dialog.sheet { margin: auto; border-radius: 16px; } }
+.sheet-in { padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 12px; }
+.sheet-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.sheet-head h3 { margin: 0; font-size: 18px; }
+.price-big { font-family: var(--f-num); font-size: 26px; font-weight: 600; }
+.chart { width: 100%; height: 150px; display: block; }
+.seg { display: inline-grid; grid-auto-flow: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: none; padding: 6px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--card); }
+.seg button.buy[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.seg button.sellb[aria-pressed="true"] { background: var(--down); color: #fff; }
+.form { display: grid; gap: 10px; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 13px; color: var(--ink-2); }
+.field input, .field select, .field textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.note { font-size: 13px; color: var(--ink-2); background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.note.timing { border-left: 3px solid var(--accent); }
+.err { color: var(--bad); font-size: 13.5px; min-height: 1em; }
+details.more summary { cursor: pointer; font-size: 13.5px; color: var(--accent); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--card);
+  padding: 8px 16px; border-radius: 8px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }
+table.costs { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.costs td { padding: 6px 0; border-top: 1px solid var(--line); vertical-align: top; }
+table.costs td:first-child { color: var(--ink-2); width: 40%; padding-right: 10px; }
+.empty { color: var(--ink-2); font-size: 14px; padding: 6px 0; }
+.confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (min-width: 900px) {
+  body { padding-bottom: 0; }
+  nav.tabs { position: sticky; top: 0; bottom: auto; max-width: 960px; margin: 0 auto; border: 0; border-bottom: 1px solid var(--line); background: var(--bg);
+    grid-template-columns: repeat(4, max-content); gap: 8px; padding: 8px 16px 0; }
+  nav.tabs button { grid-auto-flow: column; gap: 6px; padding: 8px 12px; font-size: 14px; border-bottom: 2px solid transparent; }
+  nav.tabs button[aria-current="page"] { border-bottom-color: var(--accent); }
+  nav.tabs button svg { width: 18px; height: 18px; }
+  .toast { bottom: 24px; }
+}
+@media (prefers-reduced-motion: no-preference) { .chip, .btn, nav.tabs button { transition: background .15s, color .15s; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="label">仮想の資産合計</div>
+    <div class="equity" id="equity">—</div>
+    <div class="pnl" id="pnl">&nbsp;</div>
+    <div class="fresh" id="fresh">価格データを読み込み中…</div>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="画面の切り替え">
+  <button data-tab="home" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>資産</button>
+  <button data-tab="market"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/></svg>銘柄</button>
+  <button data-tab="review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4 10-10"/></svg>答え合わせ</button>
+  <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9l2.1 2.1m10 10l2.1 2.1M4.9 19.1L7 17m10-10l2.1-2.1"/></svg>設定</button>
+</nav>
+
+<main>
+  <section class="view" id="view-home">
+    <div class="card">
+      <h2>お金の内訳 <small id="startInfo"></small></h2>
+      <div class="kpis" id="kpis"></div>
+      <div class="note" id="marginNote" hidden></div>
+    </div>
+    <div class="card"><h2>約定待ちの注文 <small>価格データが更新されると約定します</small></h2><div class="list" id="pending"></div></div>
+    <div class="card"><h2>持っているもの <small>押すと売却・決済</small></h2><div class="list" id="positions"></div></div>
+  </section>
+
+  <section class="view" id="view-market" hidden>
+    <div class="chips" id="cats" role="group" aria-label="種類で絞り込み"></div>
+    <div class="card"><div class="list" id="markets"></div></div>
+    <p class="muted" style="font-size:12.5px;margin:0">前日比は前の取引日の終値と比べた値です。押すと詳しい値動きと注文画面が開きます。</p>
+  </section>
+
+  <section class="view" id="view-review" hidden>
+    <div class="card"><h2>成績</h2><div class="kpis" id="stats"></div><div class="note" id="statsNote"></div></div>
+    <div class="card"><h2>答え合わせ待ち</h2><div class="list" id="dueList"></div></div>
+    <div class="card"><h2>答え合わせの結果</h2><div class="list" id="checkList"></div></div>
+    <div class="card"><h2>決済した取引</h2><div class="list" id="closedList"></div></div>
+  </section>
+
+  <section class="view" id="view-settings" hidden>
+    <div class="card">
+      <h2>仮想のお金</h2>
+      <div class="grid2">
+        <div class="field"><label for="setCash">はじめの資金（円）</label><input id="setCash" type="number" min="1000" step="1000" inputmode="numeric"></div>
+        <div class="field"><label for="setMonthly">毎月1日の入金（円）</label><input id="setMonthly" type="number" min="0" step="1000" inputmode="numeric"></div>
+      </div>
+      <div class="confirm" id="resetBox"></div>
+      <p class="muted" style="font-size:13px;margin:0">やり直すと、注文と取引の記録はすべて消えます。先に下の「記録を書き出す」で保存できます。</p>
+    </div>
+    <div class="card">
+      <h2>記録の保存</h2>
+      <p class="muted" style="font-size:13.5px;margin:0">記録はこのブラウザの中だけに保存されます。スマホとPCで続きをやるときや、念のための保存に使ってください。</p>
+      <div class="quick"><button class="btn" id="exportBtn" type="button">記録を書き出す</button>
+        <label class="btn" for="importFile">記録を読み込む</label><input id="importFile" type="file" accept="application/json" hidden></div>
+    </div>
+    <div class="card">
+      <h2>約定のルール</h2>
+      <table class="costs"><tbody>
+        <tr><td>日本株・国内ETF</td><td>東証 9:00〜11:30、12:30〜15:30。時間外の注文は次の取引開始時に約定。100株未満（単元未満）は次の寄り付き（9:00 か 12:30）で約定。</td></tr>
+        <tr><td>米国株・米国ETF</td><td>米国市場の取引時間（日本時間 23:30〜翌6:00。米国の夏時間は 22:30〜翌5:00）。</td></tr>
+        <tr><td>FX</td><td>月曜の朝〜土曜の朝まで（ニューヨーク時間の日曜17時〜金曜17時）。買いからも売りからも始められます。</td></tr>
+        <tr><td>暗号資産</td><td>24時間・365日。</td></tr>
+        <tr><td>債券・金</td><td>債券や金に投資するETFで練習します。売買できる時間は上場している市場と同じです。</td></tr>
+        <tr><td>約定する価格</td><td>注文した時刻より後の最初の15分足の始値。価格データは30分ごとに更新されるため、約定が画面に出るまで最大30分ほどかかります。祝日は価格データが無いので、自然に次の営業日になります。</td></tr>
+        <tr><td>指値</td><td>価格が指定の値に届いた時に約定。始値がすでに有利なら始値。期限は「当日（その日の取引終了まで）」か「1週間」。</td></tr>
+        <tr><td>利確・損切り</td><td>約定後、その価格に届いたら自動で決済。窓を開けて飛び越えたときは、飛んだ先の始値で決済（本番と同じく不利になります）。</td></tr>
+      </tbody></table>
+    </div>
+    <div class="card">
+      <h2>コストの目安 <small>会社やキャンペーンで変わります</small></h2>
+      <table class="costs"><tbody id="costTable"></tbody></table>
+    </div>
+    <div class="card"><h2>価格データ</h2><p class="muted" id="dataInfo" style="font-size:13.5px;margin:0"></p></div>
+    <p class="muted" style="font-size:12.5px;margin:0">これは練習用のシミュレーションです。実際のお金や証券口座とはつながっていません。投資助言ではありません。</p>
+  </section>
+</main>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheetTitle"><div class="sheet-in" id="sheetBody"></div></dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script src="engine.js"></script>
+<script>
+"use strict";
+const E = window.Engine;
+const KEY = "paper-trade-v1";
+const CATS = ["すべて", "日本株", "米国株", "ETF", "債券", "金", "FX", "暗号資産"];
+let data = null, state = null, cat = "すべて";
+
+const $ = s => document.querySelector(s);
+const nowMin = () => Math.floor(Date.now() / 60000);
+const yen = (v, sign) => v == null || !isFinite(v) ? "—" : (sign && v > 0 ? "+" : "") + Math.round(v).toLocaleString("ja-JP") + "円";
+const pct = v => v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+const cls = v => v > 0 ? "up" : v < 0 ? "down" : "";
+const arrow = v => v > 0 ? "▲" : v < 0 ? "▼" : "";
+const px = (inst, v) => v == null ? "—" : Number(v).toLocaleString("ja-JP", { minimumFractionDigits: inst.dec, maximumFractionDigits: inst.dec }) + (inst.cur === "USD" && !E.isFx(inst) ? " ドル" : "");
+const qtyText = (inst, q) => E.isFx(inst) ? `${Number(q).toLocaleString()}通貨` : inst.cat === "暗号資産" ? `${q}` : `${q}${["ETF", "債券", "金"].includes(inst.cat) ? "口" : "株"}`;
+const side = s => s > 0 ? "買い" : "売り";
+const el = (tag, attrs = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v !== false && v != null) n.setAttribute(k, v === true ? "" : v); } kids.flat().forEach(k => k != null && k !== false && n.append(k)); return n; };
+
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && s.v === 1) return s; } catch (e) {} return null; }
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3200); }
+
+async function fetchData() {
+  try {
+    const r = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    data = E.prepare(await r.json());
+  } catch (e) {
+    $("#fresh").textContent = "価格データを読み込めませんでした。少し待ってから開き直してください。";
+    return false;
+  }
+  if (!state) { state = load() || E.newState(nowMin()); save(); }
+  const ev = E.process(state, data, nowMin());
+  if (ev.length) {
+    save();
+    const n = ev.filter(e => e.type === "filled").length, c = ev.filter(e => e.type === "checked").length, tp = ev.filter(e => e.type === "利確" || e.type === "損切り").length;
+    const parts = [n && `${n}件の約定`, tp && `${tp}件の利確・損切り`, c && `${c}件の答え合わせ`].filter(Boolean);
+    if (parts.length) toast(parts.join("、") + "がありました");
+  }
+  render();
+  return true;
+}
+
+// ---------- 描画 ----------
+function render() {
+  if (!data || !state) return;
+  const now = nowMin(), s = E.summary(state, data, now);
+  $("#equity").textContent = yen(s.equity);
+  const p = $("#pnl"); p.className = "pnl " + cls(s.totalPnl);
+  p.textContent = `${arrow(s.totalPnl)} 入れたお金 ${yen(s.invested)} に対して ${yen(s.totalPnl, true)}（${pct(s.invested ? s.totalPnl / s.invested * 100 : 0)}）`;
+  const age = now - data.generatedMin;
+  $("#fresh").textContent = `価格 ${E.fmtJst(data.generatedMin)} 時点（${age < 60 ? age + "分前" : Math.floor(age / 60) + "時間前"}）・${data.source}・株価はさらに約20分遅れ`;
+  $("#startInfo").textContent = `${E.fmtJst(state.start, true).split(" ")[0]} に開始`;
+  $("#kpis").replaceChildren(...[
+    ["現金", yen(s.cash)], ["買える金額（余力）", yen(s.buyingPower)], ["株・暗号資産などの評価額", yen(s.stockValue)],
+    ["FXの含み損益", yen(s.fxUnreal, true), cls(s.fxUnreal)], ["決済した損益の合計", yen(s.realized, true), cls(s.realized)],
+    ["毎月の入金", state.monthly ? yen(state.monthly) : "なし"],
+  ].map(([k, v, c]) => el("div", { class: "kpi" }, el("span", { class: "k" }, k), el("span", { class: "v " + (c || "") }, v))));
+  const mn = $("#marginNote");
+  if (s.marginRatio != null) {
+    mn.hidden = false;
+    mn.textContent = `FXの証拠金維持率 ${(s.marginRatio * 100).toFixed(0)}%（必要証拠金 ${yen(s.fxMargin)}）` + (s.marginRatio < 1 ? "。本番ならロスカット（強制決済）される水準です。" : s.marginRatio < 1.5 ? "。低くなっています。本番なら追加の入金や決済を考える水準です。" : "");
+    mn.style.color = s.marginRatio < 1 ? "var(--bad)" : s.marginRatio < 1.5 ? "var(--warn)" : "";
+  } else mn.hidden = true;
+  renderPending(now); renderPositions(); renderMarkets(now); renderReview(now);
+}
+
+function renderPending(now) {
+  const box = $("#pending"); box.replaceChildren();
+  const list = state.orders.filter(o => o.status === "pending");
+  if (!list.length) { box.append(el("div", { class: "empty" }, "ありません")); return; }
+  for (const o of list) {
+    const inst = data.byId[o.instId]; if (!inst) continue;
+    const what = o.action === "close" ? (E.isFx(inst) ? "決済" : "売り") : side(o.side);
+    const when = o.type === "limit" ? `指値 ${px(inst, o.limit)}・期限 ${o.expiry}` : (o.odd ? `次の寄り付きで約定` : `次の取引時間で約定`);
+    box.append(el("div", { class: "row" },
+      el("div", { class: "name" }, `${inst.name}　${what} ${qtyText(inst, o.qty)}`),
+      el("div", { class: "right" }, el("button", { class: "btn small", type: "button", onclick: () => { E.cancelOrder(state, o.id); save(); render(); toast("注文を取り消しました"); } }, "取消")),
+      el("div", { class: "sub" }, `${E.fmtJst(o.t)} 注文・${when}`)));
+  }
+}
+
+function renderPositions() {
+  const box = $("#positions"); box.replaceChildren();
+  const list = state.positions.filter(p => p.status === "open");
+  if (!list.length) { box.append(el("div", { class: "empty" }, "まだありません。「銘柄」から買ってみましょう。")); return; }
+  for (const p of list) {
+    const inst = data.byId[p.instId]; if (!inst) continue;
+    const v = E.valuePosition(data, p);
+    const base = E.isFx(inst) ? null : p.cost;
+    box.append(el("div", { class: "row tap", tabindex: 0, role: "button", onclick: () => openSheet(inst.id, p.id), onkeydown: e => e.key === "Enter" && openSheet(inst.id, p.id) },
+      el("div", { class: "name" }, inst.name, " ", el("span", { class: "badge" }, (E.isFx(inst) ? side(p.side) + " " : "") + qtyText(inst, p.qty))),
+      el("div", { class: "right num " + cls(v.pnl) }, `${arrow(v.pnl)}${yen(v.pnl, true)}`, base ? el("div", { class: "muted", style: "font-size:12px" }, pct(v.pnl / base * 100)) : null),
+      el("div", { class: "sub" }, `取得 ${px(inst, p.entry)} → 今 ${px(inst, v.price)}` + (p.tp ? `・利確 ${px(inst, p.tp)}` : "") + (p.sl ? `・損切り ${px(inst, p.sl)}` : ""))));
+  }
+}
+
+function renderMarkets(now) {
+  const chips = $("#cats");
+  if (!chips.children.length) CATS.forEach(c => chips.append(el("button", { class: "chip", type: "button", "aria-pressed": c === cat ? "true" : "false", onclick: () => { cat = c; [...chips.children].forEach(b => b.setAttribute("aria-pressed", b.textContent === c)); renderMarkets(nowMin()); } }, c)));
+  const box = $("#markets"); box.replaceChildren();
+  for (const inst of data.instruments.filter(i => cat === "すべて" || i.cat === cat)) {
+    const lp = E.last(inst), pc = E.prevClose(inst);
+    const ch = lp && pc ? (lp.price - pc) / pc * 100 : null;
+    const mk = E.marketText(inst, now);
+    box.append(el("div", { class: "row tap", tabindex: 0, role: "button", onclick: () => openSheet(inst.id), onkeydown: e => e.key === "Enter" && openSheet(inst.id) },
+      el("div", { class: "name" }, inst.name, inst.error ? el("span", { class: "badge" }, "取得できず") : null),
+      el("div", { class: "right" }, el("div", { class: "num" }, lp ? px(inst, lp.price) : "—"), el("div", { class: "num " + cls(ch), style: "font-size:13px" }, `${arrow(ch)}${pct(ch)}`)),
+      el("div", { class: "sub" }, `${inst.cat}・`, el("span", { class: "badge" + (mk.open ? " open" : "") }, mk.text))));
+  }
+}
+
+function renderReview(now) {
+  const st = E.stats(state);
+  const k = (label, v, c) => el("div", { class: "kpi" }, el("span", { class: "k" }, label), el("span", { class: "v " + (c || "") }, v));
+  const a = st.checks, b = st.closed;
+  $("#stats").replaceChildren(
+    k("答え合わせ", a ? `${a.n}回・当たり ${a.wins}回` : "まだなし"), k("当たりの割合", a ? `${Math.round(a.wins / a.n * 100)}%` : "—"),
+    k("答え合わせの損益合計", a ? yen(a.total, true) : "—", a && cls(a.total)),
+    k("決済した取引", b ? `${b.n}回・勝ち ${b.wins}回` : "まだなし"), k("決済の損益合計", b ? yen(b.total, true) : "—", b && cls(b.total)),
+    k("一番大きな負け", b ? yen(b.worst, true) : "—", b && cls(b.worst)));
+  const n = (a ? a.n : 0);
+  $("#statsNote").textContent = n < 20 ? `答え合わせはあと${20 - n}回で20回。回数が少ないうちは、成績は運の影響が大きいです。` : "20回を超えました。当たりの割合だけでなく、負けたときの大きさも見て振り返りましょう。";
+
+  const due = $("#dueList"); due.replaceChildren();
+  const waiting = state.orders.filter(o => o.horizon && !o.check && ["pending", "filled"].includes(o.status));
+  if (!waiting.length) due.append(el("div", { class: "empty" }, "ありません。注文するときに「答え合わせ」を選ぶと、ここに並びます。"));
+  for (const o of waiting) {
+    const inst = data.byId[o.instId]; if (!inst) continue;
+    const dueT = o.fill ? o.fill.t + E.HORIZONS[o.horizon] : null;
+    due.append(el("div", { class: "row" }, el("div", { class: "name" }, `${inst.name}　${side(o.side)}`),
+      el("div", { class: "right muted", style: "font-size:13px" }, dueT ? `${E.fmtJst(dueT)} ごろ` : "約定待ち"),
+      el("div", { class: "sub" }, `${o.horizon}・` + (o.reason ? `理由: ${o.reason}` : "理由なし"))));
+  }
+  const cl = $("#checkList"); cl.replaceChildren();
+  const checked = state.orders.filter(o => o.check).sort((x, y) => y.check.t - x.check.t);
+  if (!checked.length) cl.append(el("div", { class: "empty" }, "まだありません"));
+  for (const o of checked) {
+    const inst = data.byId[o.instId]; if (!inst) continue;
+    cl.append(el("div", { class: "row" },
+      el("div", { class: "name" }, el("span", { class: "badge " + (o.check.win ? "win" : "lose") }, o.check.win ? "当たり" : "外れ"), ` ${inst.name}　${side(o.side)} ${qtyText(inst, o.qty)}`),
+      el("div", { class: "right num " + cls(o.check.pnl) }, yen(o.check.pnl, true)),
+      el("div", { class: "sub" }, `${px(inst, o.fill.price)} → ${o.horizon}の ${px(inst, o.check.price)}（${E.fmtJst(o.check.t)}）` + (o.reason ? `・理由: ${o.reason}` : ""))));
+  }
+  const cd = $("#closedList"); cd.replaceChildren();
+  const closed = state.positions.filter(p => p.status === "closed").sort((x, y) => y.exit.t - x.exit.t);
+  if (!closed.length) cd.append(el("div", { class: "empty" }, "まだありません"));
+  for (const p of closed) {
+    const inst = data.byId[p.instId]; if (!inst) continue;
+    cd.append(el("div", { class: "row" },
+      el("div", { class: "name" }, `${inst.name}　${E.isFx(inst) ? side(p.side) + " " : ""}${qtyText(inst, p.qty)}`, " ", el("span", { class: "badge" }, p.exit.reason)),
+      el("div", { class: "right num " + cls(p.exit.pnl) }, yen(p.exit.pnl, true)),
+      el("div", { class: "sub" }, `${E.fmtJst(p.entryT)} ${px(inst, p.entry)} → ${E.fmtJst(p.exit.t)} ${px(inst, p.exit.price)}`)));
+  }
+}
+
+// ---------- チャート ----------
+function chartSvg(inst, mode) {
+  const src = mode === "5日" ? (inst.i || []).filter(b => b[0] >= ((inst.i || []).slice(-1)[0] || [0])[0] - 5 * 1440) : (inst.d || []).slice(mode === "1か月" ? -22 : -130);
+  const W = 600, H = 150, P = 6;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "chart"); svg.setAttribute("role", "img");
+  if (src.length < 2) { svg.setAttribute("aria-label", "データなし"); return svg; }
+  const cs = src.map(b => b[4]), lo = Math.min(...cs), hi = Math.max(...cs), span = hi - lo || 1;
+  const x = i => P + i * (W - 2 * P) / (src.length - 1), y = v => P + (hi - v) * (H - 2 * P) / span;
+  const up = cs[cs.length - 1] >= cs[0], color = up ? "var(--up)" : "var(--down)";
+  const line = cs.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const ns = (t, a) => { const n = document.createElementNS("http://www.w3.org/2000/svg", t); for (const k in a) n.setAttribute(k, a[k]); return n; };
+  for (let g = 1; g < 4; g++) svg.append(ns("line", { x1: P, x2: W - P, y1: P + g * (H - 2 * P) / 4, y2: P + g * (H - 2 * P) / 4, stroke: "var(--line)", "stroke-width": 1 }));
+  svg.append(ns("path", { d: `${line}L${x(cs.length - 1)},${H - P}L${x(0)},${H - P}Z`, fill: color, "fill-opacity": .12, stroke: "none" }));
+  svg.append(ns("path", { d: line, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }));
+  svg.append(ns("circle", { cx: x(cs.length - 1), cy: y(cs[cs.length - 1]), r: 3.5, fill: color }));
+  svg.setAttribute("aria-label", `${mode}の値動き。最安 ${lo}、最高 ${hi}`);
+  return svg;
+}
+
+// ---------- 注文シート ----------
+function openSheet(instId, posId) {
+  const inst = data.byId[instId], now = nowMin();
+  const pos = posId ? state.positions.find(p => p.id === posId && p.status === "open") : null;
+  const lp = E.last(inst), pc = E.prevClose(inst), ch = lp && pc ? (lp.price - pc) / pc * 100 : null;
+  const body = $("#sheetBody"); body.replaceChildren();
+  const fx = E.isFx(inst);
+  let mode = "3か月", sideV = 1, type = "market";
+
+  const chartBox = el("div");
+  const drawChart = () => chartBox.replaceChildren(chartSvg(inst, mode));
+  const modeSeg = el("div", { class: "seg", role: "group", "aria-label": "期間" }, ...["5日", "1か月", "3か月"].map(m => el("button", { type: "button", "aria-pressed": m === mode ? "true" : "false", onclick: e => { mode = m; [...e.target.parentNode.children].forEach(b => b.setAttribute("aria-pressed", b.textContent === m)); drawChart(); } }, m)));
+  const mk = E.marketText(inst, now);
+  body.append(
+    el("div", { class: "sheet-head" },
+      el("div", {}, el("h3", { id: "sheetTitle" }, inst.name), el("div", { class: "muted", style: "font-size:13px" }, `${inst.id.replace("=X", "")}・${inst.cat}・`, el("span", { class: "badge" + (mk.open ? " open" : "") }, mk.text))),
+      el("button", { class: "btn small", type: "button", onclick: () => $("#sheet").close() }, "閉じる")),
+    el("div", {}, el("span", { class: "price-big" }, lp ? px(inst, lp.price) : "—"), " ", el("span", { class: "num " + cls(ch) }, `${arrow(ch)}${pct(ch)}`),
+      el("div", { class: "muted", style: "font-size:12px" }, lp ? `${E.fmtJst(lp.t)} の値` : "")),
+    modeSeg, chartBox);
+  drawChart();
+
+  // フォーム
+  const err = el("div", { class: "err", role: "alert" });
+  const est = el("div", { class: "note" });
+  const timing = el("div", { class: "note timing" });
+  const qty = el("input", { id: "f-qty", type: "number", min: "0", step: "any", inputmode: "decimal" });
+  const amount = el("input", { id: "f-amount", type: "number", min: "0", step: "100", inputmode: "numeric", placeholder: "例 5000" });
+  const limit = el("input", { id: "f-limit", type: "number", step: "any", inputmode: "decimal", value: lp ? lp.price : "" });
+  const expiry = el("select", { id: "f-exp" }, ...Object.keys(E.EXPIRY).map(k => el("option", { value: k }, k)));
+  const tp = el("input", { id: "f-tp", type: "number", step: "any", inputmode: "decimal" });
+  const sl = el("input", { id: "f-sl", type: "number", step: "any", inputmode: "decimal" });
+  const horizon = el("select", { id: "f-hz" }, ...Object.keys(E.HORIZONS).map(k => el("option", { value: k, selected: k === "1週間後" }, k || "しない")));
+  const reason = el("input", { id: "f-reason", type: "text", maxlength: "80", placeholder: "例：決算が良さそう" });
+  const limitRow = el("div", { class: "grid2", hidden: true }, el("div", { class: "field" }, el("label", { for: "f-limit" }, "指値の価格"), limit), el("div", { class: "field" }, el("label", { for: "f-exp" }, "期限"), expiry));
+  const step = inst.odd ? 1 : inst.unit;
+
+  const update = () => {
+    const q = Number(qty.value), price = type === "limit" ? Number(limit.value) : lp && lp.price;
+    err.textContent = "";
+    if (q > 0 && price) {
+      const e = E.estimate(data, inst, pos ? -pos.side : sideV, price, q, now);
+      est.textContent = e.text + (pos ? "" : `・今の余力 ${yen(E.summary(state, data, now).buyingPower)}`);
+    } else est.textContent = `数量を入れると金額の目安が出ます（${fx ? "1,000通貨" : step + (inst.cat === "暗号資産" ? "" : "単位")}から）`;
+    timing.textContent = E.timingText(inst, q || inst.unit, type, now);
+  };
+  qty.addEventListener("input", () => { amount.value = ""; update(); });
+  amount.addEventListener("input", () => {           // 金額から数量を計算（買える分だけ）
+    const yenV = Number(amount.value), price = lp && lp.price;
+    if (!(yenV > 0) || !price) return;
+    const fxr = E.usdjpyAt(data, null) || 0;
+    const per = E.estimate(data, inst, 1, price, step, now).need;
+    if (per > 0) { const n = Math.floor(yenV / per); qty.value = n > 0 ? +(n * step).toFixed(8) : 0; }
+    update();
+  });
+  limit.addEventListener("input", update);
+
+  const submit = el("button", { class: "btn primary", type: "submit" }, "注文する");
+  const form = el("form", { class: "form", novalidate: true });
+
+  if (pos) {
+    // 売却・決済
+    qty.value = pos.qty;
+    body.append(el("div", { class: "card" }, el("h2", {}, fx ? "この建玉を決済" : "売る"),
+      el("div", { class: "muted", style: "font-size:13.5px" }, `${fx ? side(pos.side) + " " : ""}${qtyText(inst, pos.qty)}・取得 ${px(inst, pos.entry)}（${E.fmtJst(pos.entryT)}）`)));
+    submit.textContent = fx ? "決済の注文をする" : "売り注文をする"; submit.className = "btn sell";
+  } else {
+    const sideSeg = el("div", { class: "seg", role: "group", "aria-label": "売買" },
+      el("button", { type: "button", class: "buy", "aria-pressed": "true", onclick: e => { sideV = 1; e.target.setAttribute("aria-pressed", "true"); e.target.nextSibling && e.target.nextSibling.setAttribute("aria-pressed", "false"); submit.className = "btn primary"; submit.textContent = "買い注文をする"; update(); } }, "買う"),
+      fx ? el("button", { type: "button", class: "sellb", "aria-pressed": "false", onclick: e => { sideV = -1; e.target.setAttribute("aria-pressed", "true"); e.target.previousSibling.setAttribute("aria-pressed", "false"); submit.className = "btn sell"; submit.textContent = "売り注文をする"; update(); } }, "売る（売りから始める）") : null);
+    form.append(sideSeg);
+    submit.textContent = "買い注文をする";
+  }
+  const typeSeg = el("div", { class: "seg", role: "group", "aria-label": "注文の種類" },
+    ...[["market", "成行（今の値で）"], ["limit", "指値（値段を決める）"]].map(([v, l]) => el("button", { type: "button", "aria-pressed": v === type ? "true" : "false", onclick: e => { type = v; [...e.target.parentNode.children].forEach(b => b.setAttribute("aria-pressed", b === e.target)); limitRow.hidden = v !== "limit"; update(); } }, l)));
+  const quick = el("div", { class: "quick" }, ...(fx ? [1000, 5000, 10000] : inst.odd ? [1, 10, 100] : inst.cat === "暗号資産" ? [inst.unit, inst.unit * 10, inst.unit * 100] : [1, 5, 10])
+    .map(v => el("button", { class: "btn small", type: "button", onclick: () => { qty.value = +v.toFixed(8); amount.value = ""; update(); } }, qtyText(inst, +v.toFixed(8)))));
+  form.append(typeSeg,
+    el("div", { class: "grid2" }, el("div", { class: "field" }, el("label", { for: "f-qty" }, "数量"), qty),
+      pos || fx ? null : el("div", { class: "field" }, el("label", { for: "f-amount" }, "金額から計算（円）"), amount)),
+    quick, limitRow);
+  if (!pos) form.append(
+    el("details", { class: "more" }, el("summary", {}, "利確・損切りを設定する（任意）"),
+      el("div", { class: "grid2", style: "margin-top:8px" }, el("div", { class: "field" }, el("label", { for: "f-tp" }, "利確する価格"), tp), el("div", { class: "field" }, el("label", { for: "f-sl" }, "損切りする価格"), sl))),
+    el("div", { class: "grid2" }, el("div", { class: "field" }, el("label", { for: "f-hz" }, "答え合わせ"), horizon), el("div", { class: "field" }, el("label", { for: "f-reason" }, "理由（一行）"), reason)));
+  form.append(est, timing, err, submit);
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    try {
+      const o = pos
+        ? E.placeOrder(state, data, { instId: inst.id, action: "close", posId: pos.id, side: pos.side, qty: Number(qty.value), type, limit: limit.value, expiry: expiry.value }, nowMin())
+        : E.placeOrder(state, data, { instId: inst.id, side: sideV, qty: Number(qty.value), type, limit: limit.value, expiry: expiry.value, tp: tp.value, sl: sl.value, horizon: horizon.value, reason: reason.value }, nowMin());
+      E.process(state, data, nowMin());
+      save(); render(); $("#sheet").close();
+      toast(o.status === "filled" ? "約定しました" : "注文を受け付けました。価格データが更新されると約定します");
+    } catch (ex) { err.textContent = ex.message; }
+  });
+  body.append(form);
+  update();
+  $("#sheet").showModal();
+}
+
+// ---------- タブ・設定 ----------
+function showTab(name) {
+  document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === name ? "page" : "false"));
+  document.querySelectorAll("section.view").forEach(s => s.hidden = s.id !== "view-" + name);
+  if (location.hash.slice(1) !== name) history.replaceState(null, "", "#" + name);
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+showTab(["home", "market", "review", "settings"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
+
+function initSettings() {
+  $("#setCash").value = state.cash0; $("#setMonthly").value = state.monthly;
+  const box = $("#resetBox");
+  const askReset = () => box.replaceChildren(el("span", {}, "本当に最初からやり直しますか？"),
+    el("button", { class: "btn sell small", type: "button", onclick: () => {
+      state = E.newState(nowMin(), Math.max(1000, Number($("#setCash").value) || 100000), Math.max(0, Number($("#setMonthly").value) || 0));
+      save(); render(); initSettings(); toast("最初からやり直しました");
+    } }, "やり直す"),
+    el("button", { class: "btn small", type: "button", onclick: initSettings }, "やめる"));
+  box.replaceChildren(el("button", { class: "btn", type: "button", onclick: askReset }, "この金額で最初からやり直す"));
+  const C = E.COSTS;
+  $("#costTable").replaceChildren(...[
+    ["日本株・国内ETF", "手数料 0円（多くのネット証券の現在の水準）"],
+    ["米国株・米国ETF", `手数料 約定代金の${(C.usFeeRate * 100).toFixed(3)}%（上限${C.usFeeMaxUsd}ドル）＋両替 1ドルあたり${C.usFxSpread * 100}銭（買う時も売る時も）`],
+    ["FX", "スプレッド " + Object.entries(C.fxSpreadPips).map(([k, v]) => `${k.replace("=X", "").replace(/(...)(...)/, "$1/$2")} ${v}pips`).join("、") + `。レバレッジ${C.leverage}倍。スワップポイントは計算していません`],
+    ["暗号資産", `取引所形式の手数料 ${(C.cryptoFeeRate * 100).toFixed(1)}%。販売所形式は売値と買値の差が数%になることもあり、もっと不利です`],
+  ].map(([a, b]) => el("tr", {}, el("td", {}, a), el("td", {}, b))));
+  $("#dataInfo").textContent = data ? `${data.source}。30分ごとに更新。15分足は直近10日分、日足は6か月分。` + (data.missing.length ? `取得できなかった銘柄: ${data.missing.join("、")}` : "") : "";
+}
+$("#exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(state, null, 1)], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: `仮想トレード記録_${new Date().toISOString().slice(0, 10)}.json` });
+  document.body.append(a); a.click(); a.remove();
+};
+$("#importFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const s = JSON.parse(await f.text()); if (s.v !== 1 || !Array.isArray(s.orders)) throw 0; state = s; save(); E.process(state, data, nowMin()); render(); initSettings(); toast("記録を読み込みました"); }
+  catch (_) { toast("このファイルは読み込めません（書き出した記録のファイルを選んでください）"); }
+  e.target.value = "";
+};
+
+fetchData().then(ok => { if (ok) initSettings(); });
+setInterval(() => { if (!document.hidden) fetchData(); }, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchData(); });
+</script>
+</body>
+</html>
