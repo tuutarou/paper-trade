@@ -1,3 +1,4 @@
+yaml
 name: Update prices and publish app
 
 on:
@@ -28,6 +29,13 @@ jobs:
         run: pip install yfinance pandas
       - name: Fetch prices
         run: python fetch_prices.py
+      - name: Put app files into site folder
+        run: |
+          mkdir -p site
+          for f in index.html engine.js; do
+            if [ -f "$f" ]; then cp "$f" site/; fi
+          done
+          ls -la site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
