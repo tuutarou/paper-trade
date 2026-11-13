@@ -135,6 +135,7 @@ table.costs td:first-child { color: var(--ink-2); width: 40%; padding-right: 10p
 
 <main>
   <section class="view" id="view-home">
+    <div class="note" id="storageNote" hidden></div>
     <div class="card">
       <h2>お金の内訳 <small id="startInfo"></small></h2>
       <div class="kpis" id="kpis"></div>
@@ -169,9 +170,17 @@ table.costs td:first-child { color: var(--ink-2); width: 40%; padding-right: 10p
     </div>
     <div class="card">
       <h2>記録の保存</h2>
-      <p class="muted" style="font-size:13.5px;margin:0">記録はこのブラウザの中だけに保存されます。スマホとPCで続きをやるときや、念のための保存に使ってください。</p>
-      <div class="quick"><button class="btn" id="exportBtn" type="button">記録を書き出す</button>
-        <label class="btn" for="importFile">記録を読み込む</label><input id="importFile" type="file" accept="application/json" hidden></div>
+      <p class="muted" style="font-size:13.5px;margin:0">記録はこのブラウザの中だけに保存されます。別のブラウザ・別の端末・シークレットウィンドウからは見えません。ブラウザの「閲覧データの削除」や、iPhoneのSafariで7日ほど開かなかったときにも消えることがあります。</p>
+      <div class="quick"><button class="btn" id="exportBtn" type="button">記録をファイルに書き出す</button>
+        <label class="btn" for="importFile">ファイルから読み込む</label><input id="importFile" type="file" accept="application/json" hidden></div>
+      <p class="muted" id="lastExport" style="font-size:12.5px;margin:0"></p>
+    </div>
+    <div class="card">
+      <h2>引き継ぎコード <small>スマホ⇔PCの移動に</small></h2>
+      <p class="muted" style="font-size:13.5px;margin:0">記録を文字のコードにします。コピーして、もう一方の端末のこの欄に貼り付けると続きができます。LINEのメモやメールに貼って保存しておくこともできます。</p>
+      <div class="quick"><button class="btn" id="copyCode" type="button">コードを作ってコピー</button></div>
+      <div class="field"><label for="codeBox">コード</label><textarea id="codeBox" rows="3" spellcheck="false" placeholder="ここにコードを貼り付けて「読み込む」"></textarea></div>
+      <div class="quick"><button class="btn" id="loadCode" type="button">貼り付けたコードを読み込む</button></div>
     </div>
     <div class="card">
       <h2>約定のルール</h2>
@@ -217,8 +226,35 @@ const qtyText = (inst, q) => E.isFx(inst) ? `${Number(q).toLocaleString()}通貨
 const side = s => s > 0 ? "買い" : "売り";
 const el = (tag, attrs = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v !== false && v != null) n.setAttribute(k, v === true ? "" : v); } kids.flat().forEach(k => k != null && k !== false && n.append(k)); return n; };
 
-function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
-function load() { try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && s.v === 1) return s; } catch (e) {} return null; }
+// 保存は2か所（localStorage と IndexedDB）。片方が消えても、もう片方から戻せるようにする
+let freshStart = false, persistAsked = false;
+function idb() {
+  return new Promise((ok, ng) => {
+    try { const r = indexedDB.open("paper-trade", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }
+    catch (e) { ng(e); }
+  });
+}
+async function idbPut(v) { try { const db = await idb(); db.transaction("kv", "readwrite").objectStore("kv").put(v, KEY); } catch (e) {} }
+async function idbGet() {
+  try { const db = await idb(); return await new Promise(ok => { const r = db.transaction("kv").objectStore("kv").get(KEY); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); }
+  catch (e) { return null; }
+}
+function save() {
+  const json = JSON.stringify(state);
+  try { localStorage.setItem(KEY, json); } catch (e) {}
+  idbPut(json);
+  if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); } // 消されにくくするようブラウザに頼む
+}
+const valid = s => s && s.v === 1 && Array.isArray(s.orders) && Array.isArray(s.positions);
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (valid(s)) return s; } catch (e) {} return null; }
+async function loadAny() {
+  const a = load();
+  let b = null; try { b = JSON.parse(await idbGet() || "null"); } catch (e) {}
+  if (!valid(b)) b = null;
+  if (a && b) return (b.seq || 0) > (a.seq || 0) ? b : a;     // 新しい方（操作が多い方）
+  return a || b;
+}
+function adopt(s, msg) { state = s; freshStart = false; save(); E.process(state, data, nowMin()); render(); initSettings(); toast(msg); }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3200); }
 
 async function fetchData() {
@@ -230,7 +266,11 @@ async function fetchData() {
     $("#fresh").textContent = "価格データを読み込めませんでした。少し待ってから開き直してください。";
     return false;
   }
-  if (!state) { state = load() || E.newState(nowMin()); save(); }
+  if (!state) {
+    state = await loadAny();
+    if (!state) { state = E.newState(nowMin()); freshStart = true; }
+    save();
+  }
   const ev = E.process(state, data, nowMin());
   if (ev.length) {
     save();
@@ -263,7 +303,24 @@ function render() {
     mn.textContent = `FXの証拠金維持率 ${(s.marginRatio * 100).toFixed(0)}%（必要証拠金 ${yen(s.fxMargin)}）` + (s.marginRatio < 1 ? "。本番ならロスカット（強制決済）される水準です。" : s.marginRatio < 1.5 ? "。低くなっています。本番なら追加の入金や決済を考える水準です。" : "");
     mn.style.color = s.marginRatio < 1 ? "var(--bad)" : s.marginRatio < 1.5 ? "var(--warn)" : "";
   } else mn.hidden = true;
+  renderStorageNote(now);
   renderPending(now); renderPositions(); renderMarkets(now); renderReview(now);
+}
+
+function renderStorageNote(now) {
+  const n = $("#storageNote");
+  const used = state.orders.length > 0;
+  const goSettings = el("button", { class: "btn small", type: "button", onclick: () => showTab("settings") }, "記録の保存へ");
+  if (freshStart && !used) {
+    n.replaceChildren("このブラウザには、まだ記録がありません。前に別のブラウザや端末（スマホ・PC・シークレットウィンドウなど）で使っていた場合は、そちらで「引き継ぎコード」か「書き出し」をして、ここで読み込むと続きができます。 ", goSettings);
+    n.hidden = false; return;
+  }
+  const days = state.lastExport ? Math.floor((now - state.lastExport) / 1440) : null;
+  if (used && (days == null || days >= 7)) {
+    n.replaceChildren(`記録はこのブラウザにだけ保存されています。${days == null ? "まだ一度も書き出していません" : `最後の書き出しから${days}日たちました`}。念のため保存しておくと安心です。 `, goSettings);
+    n.hidden = false; return;
+  }
+  n.hidden = true;
 }
 
 function renderPending(now) {
@@ -504,18 +561,34 @@ function initSettings() {
     ["FX", "スプレッド " + Object.entries(C.fxSpreadPips).map(([k, v]) => `${k.replace("=X", "").replace(/(...)(...)/, "$1/$2")} ${v}pips`).join("、") + `。レバレッジ${C.leverage}倍。スワップポイントは計算していません`],
     ["暗号資産", `取引所形式の手数料 ${(C.cryptoFeeRate * 100).toFixed(1)}%。販売所形式は売値と買値の差が数%になることもあり、もっと不利です`],
   ].map(([a, b]) => el("tr", {}, el("td", {}, a), el("td", {}, b))));
+  $("#lastExport").textContent = state.lastExport ? `最後に保存した日時: ${E.fmtJst(state.lastExport, true)}` : "まだ一度も保存していません";
   $("#dataInfo").textContent = data ? `${data.source}。30分ごとに更新。15分足は直近10日分、日足は6か月分。` + (data.missing.length ? `取得できなかった銘柄: ${data.missing.join("、")}` : "") : "";
 }
+function markExported() { state.lastExport = nowMin(); save(); render(); initSettings(); }
 $("#exportBtn").onclick = () => {
   const blob = new Blob([JSON.stringify(state, null, 1)], { type: "application/json" });
   const a = el("a", { href: URL.createObjectURL(blob), download: `仮想トレード記録_${new Date().toISOString().slice(0, 10)}.json` });
   document.body.append(a); a.click(); a.remove();
+  markExported();
 };
 $("#importFile").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  try { const s = JSON.parse(await f.text()); if (s.v !== 1 || !Array.isArray(s.orders)) throw 0; state = s; save(); E.process(state, data, nowMin()); render(); initSettings(); toast("記録を読み込みました"); }
+  try { const s = JSON.parse(await f.text()); if (!valid(s)) throw 0; adopt(s, "記録を読み込みました"); }
   catch (_) { toast("このファイルは読み込めません（書き出した記録のファイルを選んでください）"); }
   e.target.value = "";
+};
+// 引き継ぎコード：記録のJSONを文字コード（Base64）にする
+const toCode = s => "PT1:" + btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+const fromCode = c => JSON.parse(decodeURIComponent(escape(atob(c.trim().replace(/^PT1:/, "").replace(/\s+/g, "")))));
+$("#copyCode").onclick = async () => {
+  const box = $("#codeBox"); box.value = toCode(state);
+  try { await navigator.clipboard.writeText(box.value); toast("コードをコピーしました。もう一方の端末に貼り付けてください"); }
+  catch (_) { box.select(); toast("コードを選択しました。コピーしてください"); }
+  markExported();
+};
+$("#loadCode").onclick = () => {
+  try { const s = fromCode($("#codeBox").value); if (!valid(s)) throw 0; adopt(s, "コードから記録を読み込みました"); $("#codeBox").value = ""; }
+  catch (_) { toast("コードを読み込めませんでした。全部コピーできているか確かめてください"); }
 };
 
 fetchData().then(ok => { if (ok) initSettings(); });
